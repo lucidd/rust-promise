@@ -1,4 +1,7 @@
 language: rust
+env:
+    global:
+        - secure: EL5Y260luFtRMKPFt6tRA3gAKq9kpYdKUlL5AmSxoIsuj994JwSoBriAyXmtYJBDnVKYx3ogTm3Sq1mXRdy97fJ3jBbYfDktYIGKCcSsDtY9lOox9M9oeyB+DKmpGytXPh2MxxxmD/BSriqDT4eoJecQEotHm4Vw0exQGFT+o4Q=
 os:
     - linux
     - osx
@@ -9,3 +12,6 @@ script:
     - cargo build -v
     - cargo test -v
     - cargo doc -v
+after_script:
+    - cd target
+    - curl http://www.rust-ci.org/artifacts/put?t=$RUSTCI_TOKEN | sh
