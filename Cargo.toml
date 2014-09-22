@@ -1,0 +1,9 @@
+[package]
+
+name = "promise"
+version = "0.0.1"
+authors = ["Kevin Walter <kevin.walter.private@googlemail.com>"]
+
+[lib]
+
+name = "promise"
