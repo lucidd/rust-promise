@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn test_future2(){
+    fn test_future_hungup(){
         let (p, f) = promise::<uint>();
         spawn(proc(){
             timer::sleep(Duration::seconds(1));
@@ -179,7 +179,8 @@ mod tests {
     fn test_future_map(){
         let (tx, rx) = channel();
         let f = Future::value(3u);
-        f.map(proc(x) x*x).on_complete(proc(x){
+        f.map(proc(x) x*x)
+         .on_complete(proc(x){
             tx.send(x);
         });
         assert_eq!(rx.recv().ok(), Some(9u));
