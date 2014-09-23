@@ -21,8 +21,12 @@ impl<T: Send> Promise<T> {
         Promise{ sender: tx }
     }
 
-    pub fn resolve(self, value: T) {
-        self.sender.send(Ok(value))
+    pub fn resolve(self, value: T) -> Result<(), T> {
+        match self.sender.send_opt(Ok(value)) {
+            Ok(x) => Ok(x),
+            Err(Ok(val)) => Err(val),
+            _ => unreachable!(),
+        }
     }
 
     fn fail(self, error: FutureError) {
@@ -43,7 +47,7 @@ impl<T: Send> Future<T>{
 
     pub fn value(val: T) -> Future<T> {
         let (p, f) = promise::<T>();
-        p.resolve(val);
+        let _ = p.resolve(val);
         f
     }
 
@@ -51,8 +55,10 @@ impl<T: Send> Future<T>{
         let (p, f) = promise::<T>();
         spawn(proc() {
             match try(func) {
-                Ok(val) => p.resolve(val),
-                Err(err) => p.fail(TaskFailure(err)),
+                Ok(val) => {
+                    let _ = p.resolve(val);
+                },
+                Err(err) => {p.fail(TaskFailure(err));},
             };
         });
         f
@@ -71,8 +77,10 @@ impl<T: Send> Future<T>{
             match res {
                 Ok(val) => {
                     match try(proc() func(val)) {
-                        Ok(mapped) => p.resolve(mapped),
-                        Err(err) => p.fail(TaskFailure(err)),
+                        Ok(mapped) => {
+                            let _ = p.resolve(mapped);
+                        },
+                        Err(err) => {p.fail(TaskFailure(err));},
                     };
                 },
                 Err(err) => p.fail(err),
@@ -115,7 +123,7 @@ mod tests {
     #[test]
     fn test_future(){
         let (p, f) = promise();
-        p.resolve(123u);
+        assert_eq!(p.resolve(123u), Ok(()));
         assert_eq!(f.get().ok(), Some(123u));
     }
 
