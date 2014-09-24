@@ -4,6 +4,11 @@ use std::any::Any;
 use std::io::timer;
 use std::time::duration::Duration;
 use std::task::try;
+use std::comm::{
+    Select,
+    Handle,
+};
+use std::collections::HashMap;
 
 
 pub enum FutureError{
@@ -29,6 +34,10 @@ impl<T: Send> Promise<T> {
         }
     }
 
+    fn send(self, value: Result<T, FutureError>){
+        self.sender.send(value);
+    }
+
     fn fail(self, error: FutureError) {
         self.sender.send(Err(error))
     }
@@ -43,6 +52,31 @@ impl<T: Send> Future<T>{
 
     fn new(rx: Receiver<Result<T, FutureError>>) -> Future<T> {
         Future{ receiver: rx }
+    }
+
+    pub fn first_of(futures: Vec<Future<T>>) -> Future<T> {
+        let (p, f) = promise::<T>();
+        spawn(proc(){
+            let select = Select::new();
+            let mut handles = HashMap::new();
+            for future in futures.iter() {
+                let mut handle = select.handle(&future.receiver);
+                let id = handle.id();
+                handles.insert(handle.id(), handle);
+                let h = handles.get_mut(&id);
+                unsafe {
+                    h.add();
+                }
+            }
+            let first = handles.get_mut(&select.wait());
+            p.send(
+                match first.recv_opt() {
+                    Ok(res) => res,
+                    Err(_) => Err(HungUp),
+                }
+            );
+        });
+        f
     }
 
     pub fn value(val: T) -> Future<T> {
@@ -165,6 +199,15 @@ mod tests {
         let f = Future::delay(proc() 123u, Duration::seconds(3));
         //TODO: test delay
         assert_eq!(f.get().ok(), Some(123u));
+    }
+
+    #[test]
+    fn test_future_first_of(){
+        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
+        let f2 = Future::from_fn(proc() "fast");
+        let f3 = Future::first_of(vec![f1,f2]);
+        //TODO: test delay
+        assert_eq!(f3.get().ok(), Some("fast"));
     }
 
     #[test]
