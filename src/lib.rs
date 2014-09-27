@@ -68,13 +68,21 @@ impl<T: Send> Future<T>{
                     h.add();
                 }
             }
-            let first = handles.get_mut(&select.wait());
-            p.send(
-                match first.recv_opt() {
-                    Ok(res) => res,
-                    Err(_) => Err(HungUp),
+            {
+                let first = handles.get_mut(&select.wait());
+                p.send(
+                    match first.recv_opt() {
+                        Ok(res) => res,
+                        Err(_) => Err(HungUp),
+                    }
+                );
+            }
+
+            for (_, handle) in handles.iter_mut() {
+                unsafe {
+                    handle.remove();
                 }
-            );
+            }
         });
         f
     }
@@ -206,7 +214,6 @@ mod tests {
         let f1 = Future::delay(proc() "slow", Duration::seconds(3));
         let f2 = Future::from_fn(proc() "fast");
         let f3 = Future::first_of(vec![f1,f2]);
-        //TODO: test delay
         assert_eq!(f3.get().ok(), Some("fast"));
     }
 
