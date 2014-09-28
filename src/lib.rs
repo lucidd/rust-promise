@@ -276,7 +276,20 @@ mod tests {
     }
 
     #[test]
-    fn test_future_all(){
+    fn test_future_all_failure(){
+        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
+        let f2 = Future::delay(proc() fail!("medium"), Duration::seconds(1));
+        let f3 = Future::from_fn(proc() "fast");
+        let f4 = Future::all(vec![f1,f2,f3]);
+        let err = match f4.get() {
+            Err(TaskFailure(err)) => err,
+            _ => fail!("should not happen"),
+        };
+        assert_eq!(*err.downcast::<&'static str>().unwrap(), "medium");
+    }
+
+    #[test]
+    fn test_future_all_success(){
         let f1 = Future::delay(proc() "slow", Duration::seconds(3));
         let f2 = Future::delay(proc() "medium", Duration::seconds(1));
         let f3 = Future::from_fn(proc() "fast");
