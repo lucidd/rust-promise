@@ -4,10 +4,7 @@ use std::any::Any;
 use std::io::timer;
 use std::time::duration::Duration;
 use std::task::try;
-use std::comm::{
-    Select,
-    Handle,
-};
+use std::comm::Select;
 use std::collections::HashMap;
 
 
@@ -48,6 +45,7 @@ pub struct Future<T> {
     receiver: Receiver<Result<T, FutureError>>
 }
 
+
 impl<T: Send> Future<T>{
 
     fn new(rx: Receiver<Result<T, FutureError>>) -> Future<T> {
@@ -60,7 +58,7 @@ impl<T: Send> Future<T>{
             let select = Select::new();
             let mut handles = HashMap::new();
             for future in futures.iter() {
-                let mut handle = select.handle(&future.receiver);
+                let handle = select.handle(&future.receiver);
                 let id = handle.id();
                 handles.insert(handle.id(), handle);
                 let h = handles.get_mut(&id);
@@ -81,6 +79,66 @@ impl<T: Send> Future<T>{
             for (_, handle) in handles.iter_mut() {
                 unsafe {
                     handle.remove();
+                }
+            }
+        });
+        f
+    }
+
+    // Warning this function is pretty ugly mostly due to the move restrictions on handle for add
+    // and remove. It needs to be rewritten at some point.
+    pub fn all(futures: Vec<Future<T>>) -> Future<Vec<T>> {
+        let (p, f) = promise::<Vec<T>>();
+        spawn(proc(){
+            let select = Select::new();
+            let mut handles = HashMap::new();
+            for (i, future) in futures.iter().enumerate() {
+                let handle = select.handle(&future.receiver);
+                let id = handle.id();
+                handles.insert(handle.id(), (i, handle));
+                let &(_, ref mut handle) = handles.get_mut(&id);
+                unsafe {
+                    handle.add();
+                }
+            }
+
+            let mut results: Vec<Option<T>> = Vec::from_fn(futures.len(), |_| None);
+            let mut error: Option<FutureError> = None;
+
+            for _ in range(0, futures.len()) {
+                let id = select.wait();
+                {
+                    let &(i, ref mut handle) = handles.get_mut(&id);
+                    match handle.recv_opt() {
+                        Ok(Ok(value)) => {
+                            *results.get_mut(i) = Some(value);
+                        },
+                        Ok(Err(err)) => {
+                            error = Some(err);
+                            break;
+                        },
+                        Err(_) => {
+                            error = Some(HungUp);
+                            break;
+                        },
+                    }
+                    unsafe{
+                        handle.remove();
+                    }
+                }
+                handles.remove(&id);
+            }
+
+            for (_, &(_, ref mut handle)) in handles.iter_mut() {
+                unsafe {
+                    handle.remove();
+                }
+            }
+
+            match error {
+                Some(err) => p.fail(err),
+                None => {
+                    let _ = p.resolve(results.into_iter().map(|v| v.unwrap()).collect());
                 }
             }
         });
@@ -215,6 +273,15 @@ mod tests {
         let f2 = Future::from_fn(proc() "fast");
         let f3 = Future::first_of(vec![f1,f2]);
         assert_eq!(f3.get().ok(), Some("fast"));
+    }
+
+    #[test]
+    fn test_future_all(){
+        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
+        let f2 = Future::delay(proc() "medium", Duration::seconds(1));
+        let f3 = Future::from_fn(proc() "fast");
+        let f4 = Future::all(vec![f1,f2,f3]);
+        assert_eq!(f4.get().ok().unwrap(), vec!["slow", "medium", "fast"]);
     }
 
     #[test]
