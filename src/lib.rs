@@ -182,7 +182,7 @@ impl<T: Send> Future<T>{
     /// If thie Future completes with an errorthe new Future completes with the same error.
     pub fn map<B: Send>(self, func: proc(T): Send -> B) -> Future<B> {
         let (p ,f) = promise::<B>();
-        self.on_complete(proc(res) {
+        self.on_result(proc(res) {
             match res {
                 Ok(val) => {
                     match try(proc() func(val)) {
@@ -208,7 +208,7 @@ impl<T: Send> Future<T>{
 
     /// Registers a function f that is called with the result of the Future.
     /// This function does not block.
-    pub fn on_complete(self, f: proc(Result<T, FutureError>):Send) {
+    pub fn on_result(self, f: proc(Result<T, FutureError>):Send) {
         spawn(proc(){
             let result = self.get();
             f(result);
@@ -317,10 +317,10 @@ mod tests {
     }
 
     #[test]
-    fn test_future_on_complete(){
+    fn test_future_on_result(){
         let (tx, rx) = channel();
         let f = Future::delay(proc() 123u, Duration::seconds(3));
-        f.on_complete(proc(x){
+        f.on_result(proc(x){
             tx.send(x);
         });
         assert_eq!(rx.recv().ok(), Some(123u))
@@ -331,7 +331,7 @@ mod tests {
         let (tx, rx) = channel();
         let f = Future::value(3u);
         f.map(proc(x) x*x)
-         .on_complete(proc(x){
+         .on_result(proc(x){
             tx.send(x);
         });
         assert_eq!(rx.recv().ok(), Some(9u));
