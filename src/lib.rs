@@ -13,6 +13,7 @@ pub enum FutureError{
     HungUp
 }
 
+/// A promise is used to set the value of the associated Future
 pub struct Promise<T> {
     sender: Sender<Result<T, FutureError>>
 }
@@ -23,6 +24,7 @@ impl<T: Send> Promise<T> {
         Promise{ sender: tx }
     }
 
+    /// Completes the associated Future with value;
     pub fn resolve(self, value: T) -> Result<(), T> {
         match self.sender.send_opt(Ok(value)) {
             Ok(x) => Ok(x),
@@ -41,6 +43,7 @@ impl<T: Send> Promise<T> {
 
 }
 
+/// A future represents a value that is not yet available
 pub struct Future<T> {
     receiver: Receiver<Result<T, FutureError>>
 }
@@ -145,12 +148,15 @@ impl<T: Send> Future<T>{
         f
     }
 
+    /// Creates a Future that completes with val.
     pub fn value(val: T) -> Future<T> {
         let (p, f) = promise::<T>();
         let _ = p.resolve(val);
         f
     }
 
+    /// Creates a Future that resolves with the return value of func,
+    /// If func fails the failure is propagated through TaskFailure.
     pub fn from_fn(func: proc(): Send -> T) -> Future<T> {
         let (p, f) = promise::<T>();
         spawn(proc() {
@@ -164,6 +170,7 @@ impl<T: Send> Future<T>{
         f
     }
 
+    /// Creates a Future just like from_fn that completes after a delay of duration.
     pub fn delay(func: proc(): Send -> T, duration: Duration) -> Future<T> {
         Future::from_fn(proc() {
             timer::sleep(duration);
@@ -171,6 +178,8 @@ impl<T: Send> Future<T>{
         })
     }
 
+    /// If this Future completes with a value the new Future completes with func(value).
+    /// If thie Future completes with an errorthe new Future completes with the same error.
     pub fn map<B: Send>(self, func: proc(T): Send -> B) -> Future<B> {
         let (p ,f) = promise::<B>();
         self.on_complete(proc(res) {
@@ -189,6 +198,7 @@ impl<T: Send> Future<T>{
         f
     }
 
+    /// Synchronously waits for the result of the Future and returns it.
     pub fn get(self) -> Result<T, FutureError> {
         match self.receiver.recv_opt() {
             Ok(res) => res,
@@ -196,6 +206,8 @@ impl<T: Send> Future<T>{
         }
     }
 
+    /// Registers a function f that is called with the result of the Future.
+    /// This function does not block.
     pub fn on_complete(self, f: proc(Result<T, FutureError>):Send) {
         spawn(proc(){
             let result = self.get();
@@ -205,6 +217,7 @@ impl<T: Send> Future<T>{
 
 }
 
+/// Creates a Future and the associated Promise to complete it.
 pub fn promise<T :Send>() -> (Promise<T>, Future<T>) {
     let (tx, rx) = channel();
     (Promise::new(tx), Future::new(rx))
