@@ -11,11 +11,8 @@ use promise::Future;
 
 fn main() {
     let f = Future::from_fn(proc() "hello world!");
-    f.on_complete(proc(result){
-        match result {
-            Ok(value) => println!("{}", value),
-            _ => println!("error"),
-        }
+    f.on_success(proc(value){
+        println!("{}", value)
     });
     println!("end of main");
 }

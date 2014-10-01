@@ -215,6 +215,38 @@ impl<T: Send> Future<T>{
         });
     }
 
+    /// Registers a function f that is called if the Future completes with a value.
+    /// This function does not block.
+    pub fn on_success(self, f: proc(T):Send) {
+        spawn(proc(){
+            match self.get() {
+                Ok(value) => f(value),
+                _ => (),
+            }
+        });
+    }
+
+    /// Registers a function f that is called if the Future completes with an error.
+    /// This function does not block.
+    pub fn on_failure(self, f: proc(T):Send) {
+        spawn(proc(){
+            match self.get() {
+                Ok(value) => f(value),
+                _ => (),
+            }
+        });
+    }
+
+    /// Registers a function f that is called if the Future completes with a value.
+    /// This function does not block.
+    pub fn on_complete(self, success: proc(T):Send, failure: proc(FutureError):Send) {
+        spawn(proc(){
+            match self.get() {
+                Ok(value) => success(value),
+                Err(err) => failure(err),
+            }
+        });
+    }
 }
 
 /// Creates a Future and the associated Promise to complete it.
@@ -327,14 +359,24 @@ mod tests {
     }
 
     #[test]
+    fn test_future_on_success(){
+        let (tx, rx) = channel();
+        let f = Future::delay(proc() 123u, Duration::seconds(3));
+        f.on_success(proc(x){
+            tx.send(x);
+        });
+        assert_eq!(rx.recv(), 123u)
+    }
+
+    #[test]
     fn test_future_map(){
         let (tx, rx) = channel();
         let f = Future::value(3u);
         f.map(proc(x) x*x)
-         .on_result(proc(x){
+         .on_success(proc(x){
             tx.send(x);
         });
-        assert_eq!(rx.recv().ok(), Some(9u));
+        assert_eq!(rx.recv(), 9u);
     }
 
 }
