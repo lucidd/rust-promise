@@ -281,7 +281,7 @@ mod tests {
         });
         match f.get() {
             Err(HungUp) => (),
-            _ => fail!("should not happen"),
+            _ => panic!("should not happen"),
         }
     }
 
@@ -294,12 +294,12 @@ mod tests {
     #[test]
     fn test_future_from_fn_fail(){
         let f = Future::from_fn(proc() {
-            fail!("ooops");
+            panic!("ooops");
             123u
         });
         let err = match f.get() {
             Err(TaskFailure(err)) => err,
-            _ => fail!("should not happen"),
+            _ => panic!("should not happen"),
         };
         assert!(err.is::<&'static str>());
         assert_eq!(*err.downcast::<&'static str>().unwrap(), "ooops");
@@ -323,12 +323,12 @@ mod tests {
     #[test]
     fn test_future_all_failure(){
         let f1 = Future::delay(proc() "slow", Duration::seconds(3));
-        let f2 = Future::delay(proc() fail!("medium"), Duration::seconds(1));
+        let f2 = Future::delay(proc() panic!("medium"), Duration::seconds(1));
         let f3 = Future::from_fn(proc() "fast");
         let f4 = Future::all(vec![f1,f2,f3]);
         let err = match f4.get() {
             Err(TaskFailure(err)) => err,
-            _ => fail!("should not happen"),
+            _ => panic!("should not happen"),
         };
         assert_eq!(*err.downcast::<&'static str>().unwrap(), "medium");
     }
