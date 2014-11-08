@@ -64,13 +64,13 @@ impl<T: Send> Future<T>{
                 let handle = select.handle(&future.receiver);
                 let id = handle.id();
                 handles.insert(handle.id(), handle);
-                let h = handles.get_mut(&id);
+                let h = handles.get_mut(&id).unwrap();
                 unsafe {
                     h.add();
                 }
             }
             {
-                let first = handles.get_mut(&select.wait());
+                let first = handles.get_mut(&select.wait()).unwrap();
                 p.send(
                     match first.recv_opt() {
                         Ok(res) => res,
@@ -99,7 +99,7 @@ impl<T: Send> Future<T>{
                 let handle = select.handle(&future.receiver);
                 let id = handle.id();
                 handles.insert(handle.id(), (i, handle));
-                let &(_, ref mut handle) = handles.get_mut(&id);
+                let &(_, ref mut handle) = handles.get_mut(&id).unwrap();
                 unsafe {
                     handle.add();
                 }
@@ -111,10 +111,10 @@ impl<T: Send> Future<T>{
             for _ in range(0, futures.len()) {
                 let id = select.wait();
                 {
-                    let &(i, ref mut handle) = handles.get_mut(&id);
+                    let &(i, ref mut handle) = handles.get_mut(&id).unwrap();
                     match handle.recv_opt() {
                         Ok(Ok(value)) => {
-                            *results.get_mut(i) = Some(value);
+                            *results.get_mut(i).unwrap() = Some(value);
                         },
                         Ok(Err(err)) => {
                             error = Some(err);
