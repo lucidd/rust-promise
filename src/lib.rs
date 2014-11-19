@@ -74,7 +74,7 @@ impl<T: Send> Future<T>{
                 p.send(
                     match first.recv_opt() {
                         Ok(res) => res,
-                        Err(_) => Err(HungUp),
+                        Err(_) => Err(FutureError::HungUp),
                     }
                 );
             }
@@ -121,7 +121,7 @@ impl<T: Send> Future<T>{
                             break;
                         },
                         Err(_) => {
-                            error = Some(HungUp);
+                            error = Some(FutureError::HungUp);
                             break;
                         },
                     }
@@ -164,7 +164,7 @@ impl<T: Send> Future<T>{
                 Ok(val) => {
                     let _ = p.resolve(val);
                 },
-                Err(err) => {p.fail(TaskFailure(err));},
+                Err(err) => {p.fail(FutureError::TaskFailure(err));},
             };
         });
         f
@@ -189,7 +189,7 @@ impl<T: Send> Future<T>{
                         Ok(mapped) => {
                             let _ = p.resolve(mapped);
                         },
-                        Err(err) => {p.fail(TaskFailure(err));},
+                        Err(err) => {p.fail(FutureError::TaskFailure(err));},
                     };
                 },
                 Err(err) => p.fail(err),
@@ -202,7 +202,7 @@ impl<T: Send> Future<T>{
     pub fn get(self) -> Result<T, FutureError> {
         match self.receiver.recv_opt() {
             Ok(res) => res,
-            Err(_) => Err(HungUp),
+            Err(_) => Err(FutureError::HungUp),
         }
     }
 
@@ -258,7 +258,7 @@ pub fn promise<T :Send>() -> (Promise<T>, Future<T>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{promise, Future, HungUp, TaskFailure};
+    use super::{promise, Future, FutureError};
     use std::any::AnyRefExt;
     use std::boxed::BoxAny;
     use std::time::duration::Duration;
@@ -280,7 +280,7 @@ mod tests {
             p;
         });
         match f.get() {
-            Err(HungUp) => (),
+            Err(FutureError::HungUp) => (),
             _ => panic!("should not happen"),
         }
     }
@@ -298,7 +298,7 @@ mod tests {
             123u
         });
         let err = match f.get() {
-            Err(TaskFailure(err)) => err,
+            Err(FutureError::TaskFailure(err)) => err,
             _ => panic!("should not happen"),
         };
         assert!(err.is::<&'static str>());
@@ -327,7 +327,7 @@ mod tests {
         let f3 = Future::from_fn(proc() "fast");
         let f4 = Future::all(vec![f1,f2,f3]);
         let err = match f4.get() {
-            Err(TaskFailure(err)) => err,
+            Err(FutureError::TaskFailure(err)) => err,
             _ => panic!("should not happen"),
         };
         assert_eq!(*err.downcast::<&'static str>().unwrap(), "medium");
