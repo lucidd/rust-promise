@@ -1,8 +1,12 @@
 [package]
 
 name = "promise"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Kevin Walter <kevin.walter.private@googlemail.com>"]
+repository = "https://github.com/lucidd/rust-promise"
+description = """
+A simple future/promise library for rust
+"""
 
 [lib]
 
