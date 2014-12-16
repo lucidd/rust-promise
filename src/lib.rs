@@ -57,7 +57,7 @@ impl<T: Send> Future<T>{
 
     pub fn first_of(futures: Vec<Future<T>>) -> Future<T> {
         let (p, f) = promise::<T>();
-        spawn(proc(){
+        spawn(move || {
             let select = Select::new();
             let mut handles = HashMap::new();
             for future in futures.iter() {
@@ -92,7 +92,7 @@ impl<T: Send> Future<T>{
     // and remove. It needs to be rewritten at some point.
     pub fn all(futures: Vec<Future<T>>) -> Future<Vec<T>> {
         let (p, f) = promise::<Vec<T>>();
-        spawn(proc(){
+        spawn(move || {
             let select = Select::new();
             let mut handles = HashMap::new();
             for (i, future) in futures.iter().enumerate() {
@@ -157,9 +157,9 @@ impl<T: Send> Future<T>{
 
     /// Creates a Future that resolves with the return value of func,
     /// If func fails the failure is propagated through TaskFailure.
-    pub fn from_fn(func: proc(): Send -> T) -> Future<T> {
+    pub fn from_fn<F: FnOnce<(), T> + Send>(func: F) -> Future<T> {
         let (p, f) = promise::<T>();
-        spawn(proc() {
+        spawn(move ||  {
             match try(func) {
                 Ok(val) => {
                     let _ = p.resolve(val);
@@ -171,8 +171,8 @@ impl<T: Send> Future<T>{
     }
 
     /// Creates a Future just like from_fn that completes after a delay of duration.
-    pub fn delay(func: proc(): Send -> T, duration: Duration) -> Future<T> {
-        Future::from_fn(proc() {
+    pub fn delay<F: FnOnce<(), T>+Send>(func: F, duration: Duration) -> Future<T> {
+        Future::from_fn(move || {
             timer::sleep(duration);
             func()
         })
@@ -180,12 +180,12 @@ impl<T: Send> Future<T>{
 
     /// If this Future completes with a value the new Future completes with func(value).
     /// If thie Future completes with an errorthe new Future completes with the same error.
-    pub fn map<B: Send>(self, func: proc(T): Send -> B) -> Future<B> {
+    pub fn map<B: Send, F: FnOnce<(T,), B>+Send>(self, func: F) -> Future<B> {
         let (p ,f) = promise::<B>();
-        self.on_result(proc(res) {
+        self.on_result(move |res| {
             match res {
                 Ok(val) => {
-                    match try(proc() func(val)) {
+                    match try(move || func(val)) {
                         Ok(mapped) => {
                             let _ = p.resolve(mapped);
                         },
@@ -208,8 +208,8 @@ impl<T: Send> Future<T>{
 
     /// Registers a function f that is called with the result of the Future.
     /// This function does not block.
-    pub fn on_result(self, f: proc(Result<T, FutureError>):Send) {
-        spawn(proc(){
+    pub fn on_result<F: FnOnce<(Result<T, FutureError>,), ()>+Send>(self, f: F) {
+        spawn(move || {
             let result = self.get();
             f(result);
         });
@@ -217,8 +217,8 @@ impl<T: Send> Future<T>{
 
     /// Registers a function f that is called if the Future completes with a value.
     /// This function does not block.
-    pub fn on_success(self, f: proc(T):Send) {
-        spawn(proc(){
+    pub fn on_success<F: FnOnce<(T,), ()>+Send>(self, f: F) {
+        spawn(move || {
             match self.get() {
                 Ok(value) => f(value),
                 _ => (),
@@ -228,19 +228,19 @@ impl<T: Send> Future<T>{
 
     /// Registers a function f that is called if the Future completes with an error.
     /// This function does not block.
-    pub fn on_failure(self, f: proc(T):Send) {
-        spawn(proc(){
+    pub fn on_failure<F: FnOnce<(FutureError,), ()>+Send>(self, f: F) {
+        spawn(move || {
             match self.get() {
-                Ok(value) => f(value),
-                _ => (),
+                Err(err) => f(err),
+                _ => () ,
             }
         });
     }
 
     /// Registers a function f that is called if the Future completes with a value.
     /// This function does not block.
-    pub fn on_complete(self, success: proc(T):Send, failure: proc(FutureError):Send) {
-        spawn(proc(){
+    pub fn on_complete<S: FnOnce<(T,),()>+Send, F: FnOnce<(FutureError,),()>+Send>(self, success: S, failure: F) {
+        spawn(move || {
             match self.get() {
                 Ok(value) => success(value),
                 Err(err) => failure(err),
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_future_hungup(){
         let (p, f) = promise::<uint>();
-        spawn(proc(){
+        spawn(move || {
             timer::sleep(Duration::seconds(1));
             p;
         });
@@ -287,13 +287,13 @@ mod tests {
 
     #[test]
     fn test_future_from_fn(){
-        let f = Future::from_fn(proc() 123u);
+        let f = Future::from_fn(move || 123u);
         assert_eq!(f.get().ok(), Some(123u));
     }
 
     #[test]
     fn test_future_from_fn_fail(){
-        let f = Future::from_fn(proc() {
+        let f = Future::from_fn(move ||  {
             panic!("ooops");
             123u
         });
@@ -307,24 +307,24 @@ mod tests {
 
     #[test]
     fn test_future_delay(){
-        let f = Future::delay(proc() 123u, Duration::seconds(3));
+        let f = Future::delay(move ||  123u, Duration::seconds(3));
         //TODO: test delay
         assert_eq!(f.get().ok(), Some(123u));
     }
 
     #[test]
     fn test_future_first_of(){
-        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
-        let f2 = Future::from_fn(proc() "fast");
+        let f1 = Future::delay(move || "slow", Duration::seconds(3));
+        let f2 = Future::from_fn(move || "fast");
         let f3 = Future::first_of(vec![f1,f2]);
         assert_eq!(f3.get().ok(), Some("fast"));
     }
 
     #[test]
     fn test_future_all_failure(){
-        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
-        let f2 = Future::delay(proc() panic!("medium"), Duration::seconds(1));
-        let f3 = Future::from_fn(proc() "fast");
+        let f1 = Future::delay(move || "slow", Duration::seconds(3));
+        let f2 = Future::delay(move || panic!("medium"), Duration::seconds(1));
+        let f3 = Future::from_fn(move || "fast");
         let f4 = Future::all(vec![f1,f2,f3]);
         let err = match f4.get() {
             Err(FutureError::TaskFailure(err)) => err,
@@ -335,9 +335,9 @@ mod tests {
 
     #[test]
     fn test_future_all_success(){
-        let f1 = Future::delay(proc() "slow", Duration::seconds(3));
-        let f2 = Future::delay(proc() "medium", Duration::seconds(1));
-        let f3 = Future::from_fn(proc() "fast");
+        let f1 = Future::delay(move || "slow", Duration::seconds(3));
+        let f2 = Future::delay(move || "medium", Duration::seconds(1));
+        let f3 = Future::from_fn(move || "fast");
         let f4 = Future::all(vec![f1,f2,f3]);
         assert_eq!(f4.get().ok().unwrap(), vec!["slow", "medium", "fast"]);
     }
@@ -351,8 +351,8 @@ mod tests {
     #[test]
     fn test_future_on_result(){
         let (tx, rx) = channel();
-        let f = Future::delay(proc() 123u, Duration::seconds(3));
-        f.on_result(proc(x){
+        let f = Future::delay(move || 123u, Duration::seconds(1));
+        f.on_result(move |x| {
             tx.send(x);
         });
         assert_eq!(rx.recv().ok(), Some(123u))
@@ -361,8 +361,8 @@ mod tests {
     #[test]
     fn test_future_on_success(){
         let (tx, rx) = channel();
-        let f = Future::delay(proc() 123u, Duration::seconds(3));
-        f.on_success(proc(x){
+        let f = Future::delay(move || 123u, Duration::seconds(1));
+        f.on_success(move |x| {
             tx.send(x);
         });
         assert_eq!(rx.recv(), 123u)
@@ -372,8 +372,8 @@ mod tests {
     fn test_future_map(){
         let (tx, rx) = channel();
         let f = Future::value(3u);
-        f.map(proc(x) x*x)
-         .on_success(proc(x){
+        f.map(move |x| x*x)
+         .on_success(move |x| {
             tx.send(x);
         });
         assert_eq!(rx.recv(), 9u);
